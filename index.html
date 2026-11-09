@@ -38,6 +38,8 @@ label{display:block;font-size:13px;color:var(--mu);margin-bottom:10px}
 .ov.on{display:flex}
 .modal{background:var(--card);border-radius:14px;padding:16px;width:100%;max-width:560px;margin:auto}
 .empty{text-align:center;color:var(--mu);padding:24px}
+.th{width:52px;height:52px;object-fit:cover;border-radius:8px;flex:none}
+.pimg{max-width:100%;max-height:160px;border-radius:8px;margin-bottom:8px}
 @media(max-width:480px){.f2{grid-template-columns:1fr}}
 </style>
 </head>
@@ -61,7 +63,7 @@ const ST=["Orçamento","Aprovado","Em produção","Pronto","Entregue","Cancelado
 const KEY="printbros.v1";
 let db={orders:[],products:[]},tab="dash",flt="abertos",mem=null,cq="";
 function load(){try{const r=localStorage.getItem(KEY);if(r)db=JSON.parse(r)}catch(e){if(mem)db=mem}}
-function save(){mem=db;try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){}}
+function save(){mem=db;try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){alert("Não foi possível salvar neste navegador (espaço cheio ou bloqueado). Exporte um backup.")}}
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const brl=n=>(Number(n)||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
@@ -76,7 +78,8 @@ function prazo(o){const d=days(o.date);if(d===null)return'<span class="mu">sem d
  if(d===0)return'<span class="soon">Hoje</span>';
  if(d<=3)return'<span class="soon">Em '+d+'d · '+fd(o.date)+'</span>';
  return'<span class="fine">Em '+d+'d · '+fd(o.date)+'</span>'}
-function orderCard(o){return'<div class="card row" data-o="'+o.id+'"><div><b>'+esc(o.client)+'</b><div>'+esc(o.qty||1)+'× '+esc(o.item)+'</div><div class="mu">'+esc(o.specs).slice(0,90)+'</div></div><div style="text-align:right"><div>'+brl(o.value)+'</div><div>'+prazo(o)+'</div><span class="tag">'+o.status+'</span></div></div>'}
+function pay(o){const t=(+o.value||0)*(+o.qty||1),f=Math.max(0,t-(+o.paid||0));return'<div>'+brl(t)+'</div><div class="mu">Sinal: '+brl(o.paid)+'</div>'+(o.status==="Cancelado"?'':f>0?'<div class="soon">Falta: '+brl(f)+'</div>':'<div class="fine">Pago</div>')}
+function orderCard(o){const p=db.products.find(x=>x.id===o.pid);return'<div class="card row" data-o="'+o.id+'">'+(p&&p.img?'<img class="th" src="'+p.img+'" alt="">':'')+'<div style="flex:1;min-width:0"><b>'+esc(o.client)+'</b>'+(o.city?' <span class="mu">· '+esc(o.city)+'</span>':'')+'<div>'+esc(o.qty||1)+'× '+esc(o.item)+'</div><div class="mu">'+esc(o.specs).slice(0,90)+'</div></div><div style="text-align:right;flex:none">'+pay(o)+'<div>'+prazo(o)+'</div><span class="tag">'+o.status+'</span></div></div>'}
 
 function render(){
  $("#hoje").textContent=new Date().toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long"});
@@ -84,7 +87,7 @@ function render(){
  const m=$("#main");
  if(tab==="cli"){
   const L=clients().filter(c=>c.name.toLowerCase().includes(cq.toLowerCase()));
-  m.innerHTML='<div class="bar"><input id="cs" placeholder="Buscar cliente" value="'+esc(cq)+'"></div><div class="list">'+(L.length?L.map(c=>{const ab=c.orders.filter(open).length;return'<div class="card row" data-c="'+esc(c.name)+'"><div><b>'+esc(c.name)+'</b><div class="mu">'+esc(c.phone||"sem contato")+'</div><div class="mu">'+c.orders.length+' registro(s)'+(ab?' · '+ab+' em andamento':'')+'</div></div><div style="text-align:right"><div>'+brl(spent(c))+'</div><span class="mu">total comprado</span></div></div>'}).join(""):'<div class="card empty">Os clientes aparecem aqui conforme você cadastra pedidos.</div>')+'</div>';
+  m.innerHTML='<div class="bar"><input id="cs" placeholder="Buscar cliente" value="'+esc(cq)+'"></div><div class="list">'+(L.length?L.map(c=>{const ab=c.orders.filter(open).length;return'<div class="card row" data-c="'+esc(c.name)+'"><div><b>'+esc(c.name)+'</b><div class="mu">'+esc((c.city?c.city+" · ":"")+(c.phone||"sem contato"))+'</div><div class="mu">'+c.orders.length+' registro(s)'+(ab?' · '+ab+' em andamento':'')+'</div></div><div style="text-align:right"><div>'+brl(spent(c))+'</div><span class="mu">total comprado</span></div></div>'}).join(""):'<div class="card empty">Os clientes aparecem aqui conforme você cadastra pedidos.</div>')+'</div>';
   const s=$("#cs");s.oninput=e=>{cq=e.target.value;render();const n=$("#cs");n.focus();n.setSelectionRange(n.value.length,n.value.length)};
  }else if(tab==="dash"){
   const ab=db.orders.filter(open);
@@ -101,7 +104,7 @@ function render(){
   m.innerHTML='<div class="bar"><button class="btn p" id="novo">+ Novo pedido</button><select id="flt" style="width:auto"><option value="abertos">Em aberto</option><option value="todos">Todos</option>'+ST.map(s=>'<option>'+s+'</option>').join("")+'</select></div><div class="list">'+(l.length?l.map(orderCard).join(""):'<div class="card empty">Nada por aqui.</div>')+'</div>';
   $("#flt").value=flt;$("#flt").onchange=e=>{flt=e.target.value;render()};$("#novo").onclick=()=>orderForm();
  }else{
-  m.innerHTML='<div class="bar"><button class="btn p" id="novo">+ Novo produto</button></div><div class="list">'+(db.products.length?db.products.map(p=>'<div class="card row" data-p="'+p.id+'"><div><b>'+esc(p.name)+'</b><div class="mu">'+esc(p.material)+(p.time?' · '+esc(p.time):'')+'</div><div class="mu">'+esc(p.desc).slice(0,100)+'</div></div><div>'+brl(p.price)+'</div></div>').join(""):'<div class="card empty">Cadastre seus produtos para preencher pedidos mais rápido.</div>')+'</div>';
+  m.innerHTML='<div class="bar"><button class="btn p" id="novo">+ Novo produto</button></div><div class="list">'+(db.products.length?db.products.map(p=>'<div class="card row" data-p="'+p.id+'">'+(p.img?'<img class="th" src="'+p.img+'" alt="">':'')+'<div style="flex:1"><b>'+esc(p.name)+'</b><div class="mu">'+esc(p.material)+(p.time?' · '+esc(p.time):'')+'</div><div class="mu">'+esc(p.desc).slice(0,100)+'</div></div><div>'+brl(p.price)+'</div></div>').join(""):'<div class="card empty">Cadastre seus produtos para preencher pedidos mais rápido.</div>')+'</div>';
   $("#novo").onclick=()=>prodForm();
  }
  m.querySelectorAll("[data-o]").forEach(e=>e.onclick=()=>orderForm(e.dataset.o));
@@ -113,16 +116,16 @@ function hide(){$("#ov").classList.remove("on")}
 $("#ov").onclick=e=>{if(e.target.id==="ov")hide()};
 const val=id=>$("#"+id).value;
 
-function clients(){const mp={};db.orders.forEach(o=>{const k=o.client.trim().toLowerCase();const c=mp[k]||(mp[k]={name:o.client.trim(),phone:"",orders:[]});if(o.phone)c.phone=o.phone;c.orders.push(o)});return Object.values(mp).sort((a,b)=>a.name.localeCompare(b.name))}
+function clients(){const mp={};db.orders.forEach(o=>{const k=o.client.trim().toLowerCase();const c=mp[k]||(mp[k]={name:o.client.trim(),phone:"",city:"",orders:[]});if(o.phone)c.phone=o.phone;if(o.city)c.city=o.city;c.orders.push(o)});return Object.values(mp).sort((a,b)=>a.name.localeCompare(b.name))}
 const spent=c=>c.orders.filter(o=>!["Orçamento","Cancelado"].includes(o.status)).reduce((s,o)=>s+(+o.value||0)*(+o.qty||1),0);
 function clientView(name){
  const c=clients().find(x=>x.name.toLowerCase()===name.toLowerCase());if(!c)return;
  let num=c.phone.replace(/\D/g,"");if(num.length>=10&&num.length<=11)num="55"+num;
  const l=c.orders.slice().sort((a,b)=>(b.created||"").localeCompare(a.created||""));
  const fin=c.orders.filter(o=>o.status==="Entregue").length;
- show('<h2 style="margin-top:0">'+esc(c.name)+'</h2><div class="mu">'+esc(c.phone||"sem contato")+'</div><div class="grid" style="margin:12px 0"><div class="card stat"><b>'+brl(spent(c))+'</b><span>Total comprado</span></div><div class="card stat"><b>'+fin+'</b><span>Pedidos entregues</span></div></div><div class="bar"><button class="btn p" id="cn">+ Novo pedido</button>'+(num?'<a class="btn" target="_blank" rel="noopener" href="https://wa.me/'+num+'" style="text-decoration:none">WhatsApp</a>':'')+'<button class="btn" id="cx">Fechar</button></div><h2>Histórico</h2><div class="list">'+l.map(orderCard).join("")+'</div>');
+ show('<h2 style="margin-top:0">'+esc(c.name)+'</h2><div class="mu">'+esc((c.city?c.city+" · ":"")+(c.phone||"sem contato"))+'</div><div class="grid" style="margin:12px 0"><div class="card stat"><b>'+brl(spent(c))+'</b><span>Total comprado</span></div><div class="card stat"><b>'+fin+'</b><span>Pedidos entregues</span></div></div><div class="bar"><button class="btn p" id="cn">+ Novo pedido</button>'+(num?'<a class="btn" target="_blank" rel="noopener" href="https://wa.me/'+num+'" style="text-decoration:none">WhatsApp</a>':'')+'<button class="btn" id="cx">Fechar</button></div><h2>Histórico</h2><div class="list">'+l.map(orderCard).join("")+'</div>');
  $("#cx").onclick=hide;
- $("#cn").onclick=()=>orderForm(null,{client:c.name,phone:c.phone});
+ $("#cn").onclick=()=>orderForm(null,{client:c.name,phone:c.phone,city:c.city});
  document.querySelectorAll("#modal [data-o]").forEach(e=>e.onclick=()=>orderForm(e.dataset.o));
 }
 function orderForm(id,pre){
@@ -130,8 +133,8 @@ function orderForm(id,pre){
  const clients=[...new Set(db.orders.map(x=>x.client))];
  show('<h2 style="margin-top:0">'+(id?"Editar pedido":"Novo pedido")+'</h2>'+
  '<div class="f2"><label>Cliente<input id="c" list="cl" value="'+esc(o.client)+'"><datalist id="cl">'+clients.map(c=>'<option value="'+esc(c)+'">').join("")+'</datalist></label>'+
- '<label>Contato (WhatsApp)<input id="t" value="'+esc(o.phone)+'"></label></div>'+
- '<label>Produto do catálogo<select id="pp"><option value="">— escolher ou digitar abaixo —</option>'+db.products.map(p=>'<option value="'+p.id+'">'+esc(p.name)+'</option>').join("")+'</select></label>'+
+ '<label>Contato (WhatsApp)<input id="t" value="'+esc(o.phone)+'"></label></div>'+'<label>Cidade<input id="ci" value="'+esc(o.city)+'"></label>'+
+ '<label>Produto do catálogo<select id="pp"><option value="">— escolher ou digitar abaixo —</option>'+db.products.map(p=>'<option value="'+p.id+'"'+(p.id===o.pid?" selected":"")+'>'+esc(p.name)+'</option>').join("")+'</select></label>'+
  '<label>Peça<input id="i" value="'+esc(o.item)+'"></label>'+
  '<label>Especificações (material, cor, medidas, acabamento)<textarea id="s">'+esc(o.specs)+'</textarea></label>'+
  '<div class="f2"><label>Quantidade<input id="q" type="number" min="1" value="'+(o.qty||1)+'"></label><label>Valor unitário (R$)<input id="v" type="number" step="0.01" value="'+(o.value??"")+'"></label>'+
@@ -146,23 +149,26 @@ function orderForm(id,pre){
  if(id)$("#del").onclick=()=>{if(confirm("Excluir este pedido?")){db.orders=db.orders.filter(x=>x.id!==id);save();hide();render()}};
  $("#ok").onclick=()=>{
   if(!val("c").trim()||!val("i").trim()){alert("Informe o cliente e a peça.");return}
-  const n={id:id||uid(),client:val("c").trim(),phone:val("t"),item:val("i").trim(),specs:val("s"),qty:+val("q")||1,value:+val("v")||0,paid:+val("pg")||0,date:val("d"),status:val("st"),notes:val("n"),created:o.created};
+  const n={id:id||uid(),client:val("c").trim(),phone:val("t"),city:val("ci").trim(),pid:val("pp"),item:val("i").trim(),specs:val("s"),qty:+val("q")||1,value:+val("v")||0,paid:+val("pg")||0,date:val("d"),status:val("st"),notes:val("n"),created:o.created};
   if(id)db.orders=db.orders.map(x=>x.id===id?n:x);else db.orders.push(n);
   save();hide();render()};
 }
 function prodForm(id){
  const p=db.products.find(x=>x.id===id)||{};
  show('<h2 style="margin-top:0">'+(id?"Editar produto":"Novo produto")+'</h2>'+
- '<label>Nome<input id="pn" value="'+esc(p.name)+'"></label>'+
+ '<div id="pv">'+(p.img?'<img class="pimg" src="'+p.img+'" alt=""><br><button class="btn" id="rm" type="button">Remover foto</button>':'')+'</div><label>Foto do produto<input id="pf" type="file" accept="image/*"></label>'+'<label>Nome<input id="pn" value="'+esc(p.name)+'"></label>'+
  '<div class="f2"><label>Material<input id="pm" value="'+esc(p.material)+'"></label><label>Preço (R$)<input id="pr" type="number" step="0.01" value="'+(p.price??"")+'"></label></div>'+
  '<label>Tempo de produção (ex: 2 dias)<input id="pt" value="'+esc(p.time)+'"></label>'+
  '<label>Descrição / medidas<textarea id="pd">'+esc(p.desc)+'</textarea></label>'+
  '<div class="bar"><button class="btn p" id="ok">Salvar</button><button class="btn" id="cx">Cancelar</button>'+(id?'<button class="btn d" id="del">Excluir</button>':'')+'</div>');
  $("#cx").onclick=hide;
+ let img=p.img||"";
+ $("#pv").onclick=e=>{if(e.target.id==="rm"){img="";$("#pv").innerHTML=""}};
+ $("#pf").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{const k=Math.min(1,480/Math.max(im.width,im.height)),cv=document.createElement("canvas");cv.width=Math.round(im.width*k);cv.height=Math.round(im.height*k);cv.getContext("2d").drawImage(im,0,0,cv.width,cv.height);img=cv.toDataURL("image/jpeg",.75);$("#pv").innerHTML='<img class="pimg" src="'+img+'" alt=""><br><button class="btn" id="rm" type="button">Remover foto</button>'};im.src=r.result};r.readAsDataURL(f)};
  if(id)$("#del").onclick=()=>{if(confirm("Excluir este produto?")){db.products=db.products.filter(x=>x.id!==id);save();hide();render()}};
  $("#ok").onclick=()=>{
   if(!val("pn").trim()){alert("Informe o nome.");return}
-  const n={id:id||uid(),name:val("pn").trim(),material:val("pm"),price:+val("pr")||0,time:val("pt"),desc:val("pd")};
+  const n={id:id||uid(),name:val("pn").trim(),material:val("pm"),price:+val("pr")||0,time:val("pt"),desc:val("pd"),img};
   if(id)db.products=db.products.map(x=>x.id===id?n:x);else db.products.push(n);
   save();hide();render()};
 }
