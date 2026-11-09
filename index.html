@@ -128,6 +128,23 @@ function clientView(name){
  $("#cn").onclick=()=>orderForm(null,{client:c.name,phone:c.phone,city:c.city});
  document.querySelectorAll("#modal [data-o]").forEach(e=>e.onclick=()=>orderForm(e.dataset.o));
 }
+function msgText(o){
+ const t=(+o.value||0)*(+o.qty||1),f=Math.max(0,t-(+o.paid||0)),orc=o.status==="Orçamento";
+ let s="Olá, "+o.client+"! Tudo bem?\n\nSegue "+(orc?"o orçamento solicitado":"a confirmação do seu pedido")+":\n\n";
+ s+="Peça: "+o.item+"\n"+(o.specs?"Especificações: "+o.specs+"\n":"")+"Quantidade: "+(o.qty||1)+"\nValor unitário: "+brl(o.value)+"\nValor total: "+brl(t)+"\n";
+ if(+o.paid>0)s+="Sinal recebido: "+brl(o.paid)+"\nSaldo a pagar: "+brl(f)+"\n";
+ if(o.date)s+="Previsão de entrega: "+fd(o.date)+"\n";
+ s+="\n"+(orc?"Fico no aguardo da sua confirmação para iniciarmos a produção.":"Qualquer dúvida, estou à disposição.")+"\n\nAtenciosamente,\n"+(db.biz||"");
+ return s}
+function msgForm(id){
+ const o=db.orders.find(x=>x.id===id);if(!o)return;
+ show('<h2 style="margin-top:0">Mensagem para '+esc(o.client)+'</h2><label>Nome da sua empresa (assinatura)<input id="bz" value="'+esc(db.biz)+'"></label><label>Mensagem (você pode editar antes de enviar)<textarea id="mt" style="min-height:260px"></textarea></label><div class="bar"><button class="btn p" id="cp">Copiar mensagem</button><button class="btn" id="wa">Abrir no WhatsApp</button><button class="btn" id="cx">Voltar</button></div><div class="mu" id="mm"></div>');
+ $("#mt").value=msgText(o);
+ $("#bz").oninput=e=>{db.biz=e.target.value;save();$("#mt").value=msgText(o)};
+ $("#cp").onclick=()=>{const t=$("#mt"),ok=()=>$("#mm").textContent="Mensagem copiada!";(navigator.clipboard?navigator.clipboard.writeText(t.value).then(ok):Promise.reject()).catch(()=>{t.select();document.execCommand("copy");ok()})};
+ $("#wa").onclick=()=>{let num=(o.phone||"").replace(/\D/g,"");if(num.length>=10&&num.length<=11)num="55"+num;window.open("https://wa.me/"+num+"?text="+encodeURIComponent($("#mt").value),"_blank")};
+ $("#cx").onclick=()=>orderForm(id);
+}
 function orderForm(id,pre){
  const o=db.orders.find(x=>x.id===id)||{...pre,status:"Orçamento",qty:1,created:new Date().toISOString().slice(0,10)};
  const clients=[...new Set(db.orders.map(x=>x.client))];
@@ -141,11 +158,12 @@ function orderForm(id,pre){
  '<label>Sinal já pago (R$)<input id="pg" type="number" step="0.01" value="'+(o.paid??"")+'"></label><label>Entrega prevista<input id="d" type="date" value="'+esc(o.date)+'"></label></div>'+
  '<label>Status<select id="st">'+ST.map(s=>'<option'+(s===o.status?" selected":"")+'>'+s+'</option>').join("")+'</select></label>'+
  '<label>Observações<textarea id="n">'+esc(o.notes)+'</textarea></label>'+
- '<div class="mu" id="tot"></div><div class="bar" style="margin-top:12px"><button class="btn p" id="ok">Salvar</button><button class="btn" id="cx">Cancelar</button>'+(id?'<button class="btn d" id="del">Excluir</button>':'')+'</div>');
+ '<div class="mu" id="tot"></div><div class="bar" style="margin-top:12px"><button class="btn p" id="ok">Salvar</button><button class="btn" id="cx">Cancelar</button>'+(id?'<button class="btn" id="msg">Mensagem p/ cliente</button>':'')+(id?'<button class="btn d" id="del">Excluir</button>':'')+'</div>');
  const tot=()=>$("#tot").textContent="Total: "+brl(val("v")*val("q"))+" · Falta receber: "+brl(Math.max(0,val("v")*val("q")-val("pg")));
  ["v","q","pg"].forEach(k=>$("#"+k).oninput=tot);tot();
  $("#pp").onchange=e=>{const p=db.products.find(x=>x.id===e.target.value);if(p){$("#i").value=p.name;$("#v").value=p.price;if(!val("s"))$("#s").value=[p.material,p.desc].filter(Boolean).join(" · ");tot()}};
  $("#cx").onclick=hide;
+ if(id)$("#msg").onclick=()=>msgForm(id);
  if(id)$("#del").onclick=()=>{if(confirm("Excluir este pedido?")){db.orders=db.orders.filter(x=>x.id!==id);save();hide();render()}};
  $("#ok").onclick=()=>{
   if(!val("c").trim()||!val("i").trim()){alert("Informe o cliente e a peça.");return}
