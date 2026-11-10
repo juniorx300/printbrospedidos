@@ -38,6 +38,7 @@ label{display:block;font-size:13px;color:var(--mu);margin-bottom:10px}
 .ov.on{display:flex}
 .modal{background:var(--card);border-radius:14px;padding:16px;width:100%;max-width:560px;margin:auto}
 .empty{text-align:center;color:var(--mu);padding:24px}
+nav button{min-width:0;padding:10px 4px;font-size:14px}
 .th{width:52px;height:52px;object-fit:cover;border-radius:8px;flex:none}
 .pimg{max-width:100%;max-height:160px;border-radius:8px;margin-bottom:8px}
 @media(max-width:480px){.f2{grid-template-columns:1fr}}
@@ -53,6 +54,7 @@ label{display:block;font-size:13px;color:var(--mu);margin-bottom:10px}
 <button data-t="dash" class="on">Dashboard</button>
 <button data-t="ped">Pedidos</button>
 <button data-t="cli">Clientes</button>
+<button data-t="calc">Calculadora</button>
 <button data-t="prod">Produtos</button>
 </nav>
 <main id="main"></main>
@@ -88,7 +90,7 @@ function orderCard(o){const p=db.products.find(x=>x.id===o.pid);return'<div clas
 function render(){
  $("#hoje").textContent=new Date().toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long"});
  document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("on",b.dataset.t===tab));
- const m=$("#main");
+ const m=$("#main");if(tab==="calc"){calcView(m);return}
  if(tab==="cli"){
   const L=clients().filter(c=>c.name.toLowerCase().includes(cq.toLowerCase()));
   m.innerHTML='<div class="bar"><input id="cs" placeholder="Buscar cliente" value="'+esc(cq)+'"></div><div class="list">'+(L.length?L.map(c=>{const ab=c.orders.filter(open).length;return'<div class="card row" data-c="'+esc(c.name)+'"><div><b>'+esc(c.name)+'</b><div class="mu">'+esc((c.city?c.city+" · ":"")+(c.phone||"sem contato"))+'</div><div class="mu">'+c.orders.length+' registro(s)'+(ab?' · '+ab+' em andamento':'')+'</div></div><div style="text-align:right"><div>'+brl(spent(c))+'</div><span class="mu">total comprado</span></div></div>'}).join(""):'<div class="card empty">Os clientes aparecem aqui conforme você cadastra pedidos.</div>')+'</div>';
@@ -131,6 +133,28 @@ function clientView(name){
  $("#cx").onclick=hide;
  $("#cn").onclick=()=>orderForm(null,{client:c.name,phone:c.phone,city:c.city});
  document.querySelectorAll("#modal [data-o]").forEach(e=>e.onclick=()=>orderForm(e.dataset.o));
+}
+let calcEd=false,calcT;
+const CD={kg:120,kwh:0.75,imp:3000,dep:1,depm:"peca",add:2,mk:250};
+function calcView(m){
+ const c={...CD,...(db.calc||{})};
+ const f=(id,l,v,st)=>'<label>'+l+'<input id="'+id+'" type="number" inputmode="decimal" step="'+(st||"0.01")+'" min="0" value="'+v+'"></label>';
+ m.innerHTML='<h2 style="margin-top:0">Custos base</h2><div class="card"><div class="f2">'+f("k1","Filamento (R$ por kg)",c.kg)+f("k2","Energia (R$ por hora)",c.kwh)+f("k3","Preço da impressora (R$)",c.imp,"1")+f("k4","Depreciação (%)",c.dep)+'</div><label>Depreciação aplicada<select id="k5"><option value="peca">por peça</option><option value="hora">por hora de impressão</option><option value="cem">a cada 100 horas de impressão</option></select></label><div class="f2">'+f("k6","Custos adicionais (R$ por peça)",c.add)+f("k7","Acréscimo sobre o custo (%)",c.mk,"1")+'</div><div class="mu">Esses valores ficam salvos.</div></div><h2>Sua peça</h2><div class="card"><div class="f2">'+f("p1","Peso de cada peça (g)","","0.1")+f("p2","Quantidade de peças",1,"1")+f("p3","Tempo de cada peça (horas)","","1")+f("p4","Tempo de cada peça (minutos)","","1")+'</div></div><div id="cr" style="margin-top:12px"></div>';
+ $("#k5").value=c.depm;
+ const g=id=>parseFloat($("#"+id).value)||0;
+ const calc=()=>{
+  const cfg={kg:g("k1"),kwh:g("k2"),imp:g("k3"),dep:g("k4"),depm:$("#k5").value,add:g("k6"),mk:g("k7")};
+  db.calc=cfg;
+  const w=g("p1"),q=Math.max(1,Math.round(g("p2"))||1),h=g("p3")+g("p4")/60;
+  const fil=w/1000*cfg.kg,en=h*cfg.kwh,dp=cfg.imp*cfg.dep/100*(cfg.depm==="peca"?1:cfg.depm==="hora"?h:h/100),ad=cfg.add;
+  const custo=fil+en+dp+ad,venda=custo*(1+cfg.mk/100);
+  if(!w&&!h){$("#cr").innerHTML='<div class="card empty">Informe o peso e o tempo da peça para ver o valor sugerido.</div>';return}
+  const row=(l,v,b)=>'<div class="row" style="cursor:default"><span'+(b?' style="font-weight:600"':'')+'>'+l+'</span><span'+(b?' style="font-weight:600"':'')+'>'+brl(v)+'</span></div>';
+  $("#cr").innerHTML='<div class="card"><div class="list" style="gap:4px">'+row("Filamento ("+w+" g)",fil)+row("Energia ("+g("p3")+" h "+g("p4")+" min)",en)+row("Depreciação da impressora",dp)+row("Custos adicionais",ad)+row("Custo total por peça",custo,1)+'</div></div><div class="card" style="margin-top:10px"><div class="mu">Valor de venda sugerido por peça (custo × '+(1+cfg.mk/100).toFixed(2).replace(".",",")+')</div><b style="font-size:26px" class="fine">'+brl(venda)+'</b><div class="mu">Lucro por peça: '+brl(venda-custo)+'</div>'+(q>1?'<div style="margin-top:8px">Total de '+q+' peças: <b>'+brl(venda*q)+'</b> <span class="mu">(custo '+brl(custo*q)+')</span></div>':'')+'<div class="bar" style="margin-top:10px"><button class="btn p" id="cp2">Criar pedido com este valor</button></div></div>';
+  $("#cp2").onclick=()=>orderForm(null,{value:Math.round(venda*100)/100,qty:q});
+ };
+ m.querySelectorAll("input,select").forEach(e=>e.oninput=()=>{calcEd=true;calc();if(e.id[0]==="k"){clearTimeout(calcT);calcT=setTimeout(cloudBiz,700)}});
+ calc();
 }
 function msgText(o){
  const t=(+o.value||0)*(+o.qty||1),f=Math.max(0,t-(+o.paid||0)),orc=o.status==="Orçamento";
@@ -207,7 +231,7 @@ const base=()=>fs.collection("users").doc(me);
 const clean=o=>JSON.parse(JSON.stringify(o));
 function cloudSet(c,o){if(me)base().collection(c).doc(o.id).set(clean(o)).catch(e=>alert("Não foi possível salvar na nuvem: "+e.message))}
 function cloudDel(c,id){if(me)base().collection(c).doc(id).delete().catch(e=>alert("Não foi possível excluir: "+e.message))}
-function cloudBiz(){if(me)base().collection("meta").doc("settings").set({biz:db.biz||""}).catch(()=>{})}
+function cloudBiz(){if(me)base().collection("meta").doc("settings").set(Object.assign({biz:db.biz||""},db.calc?{calc:db.calc}:{}),{merge:true}).catch(()=>{})}
 async function uploadAll(j){
  const it=[...(j.orders||[]).map(o=>["orders",o]),...(j.products||[]).map(p=>["products",p])].filter(x=>x[1]&&x[1].id);
  for(let i=0;i<it.length;i+=25){const b=fs.batch();it.slice(i,i+25).forEach(([c,o])=>b.set(base().collection(c).doc(o.id),clean(o)));await b.commit()}
@@ -220,7 +244,7 @@ auth.onAuthStateChanged(u=>{
  const er=e=>alert("Erro ao carregar da nuvem: "+e.message);
  unsubs.push(base().collection("orders").onSnapshot(s=>{db.orders=s.docs.map(d=>d.data());render()},er));
  unsubs.push(base().collection("products").onSnapshot(s=>{db.products=s.docs.map(d=>d.data());render()},er));
- unsubs.push(base().collection("meta").doc("settings").onSnapshot(s=>{db.biz=(s.data()||{}).biz||""},er));
+ unsubs.push(base().collection("meta").doc("settings").onSnapshot(s=>{const d=s.data()||{};db.biz=d.biz||"";db.calc=d.calc||null;if(tab==="calc"&&!calcEd)render()},er));
 });
 $("#lb").onclick=()=>{$("#lm").textContent="";auth.signInWithEmailAndPassword($("#le").value.trim(),$("#lp").value).catch(e=>{$("#lm").textContent=e.code==="auth/network-request-failed"?"Sem conexão com a internet.":"E-mail ou senha incorretos."})};
 $("#lp").onkeydown=e=>{if(e.key==="Enter")$("#lb").click()};
