@@ -3,6 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2f6fed">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="PrintBros">
 <title>PrintBros · Pedidos</title>
 <style>
 :root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
@@ -42,6 +46,28 @@ nav button{min-width:0;padding:10px 4px;font-size:14px}
 .th{width:52px;height:52px;object-fit:cover;border-radius:8px;flex:none}
 .pimg{max-width:100%;max-height:160px;border-radius:8px;margin-bottom:8px}
 @media(max-width:480px){.f2{grid-template-columns:1fr}}
+html{-webkit-text-size-adjust:100%}
+button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+nav .ic{display:none;font-style:normal}
+.fab{position:fixed;right:16px;bottom:24px;width:56px;height:56px;border-radius:50%;border:0;background:var(--ac);color:var(--acx);font-size:32px;line-height:1;box-shadow:0 4px 14px rgba(0,0,0,.3);cursor:pointer;z-index:9}
+@media(max-width:700px){
+.wrap{padding:12px 12px 130px}
+h1{font-size:18px}
+nav{position:fixed;left:0;right:0;bottom:0;margin:0;gap:0;padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px));background:var(--card);border-top:1px solid var(--bd);z-index:10}
+nav button{border:0;background:none;color:var(--mu);display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;font-size:11px;border-radius:8px;min-height:50px}
+nav button.on{background:none;color:var(--ac);font-weight:600}
+nav .ic{display:block;font-size:20px;line-height:1}
+.fab{bottom:calc(76px + env(safe-area-inset-bottom,0px))}
+input,select,textarea{font-size:16px}
+.btn{min-height:44px}
+.bar .btn{flex:1 1 auto}
+.row[data-o]{flex-wrap:wrap}
+[data-o]>div:last-child{flex:1 1 100%!important;text-align:left!important;display:flex;flex-wrap:wrap;gap:2px 12px;align-items:baseline;border-top:1px solid var(--bd);padding-top:6px}
+.ov{padding:0;align-items:flex-end}
+.modal{max-width:none;margin:0;border-radius:18px 18px 0 0;padding:16px 16px 0;max-height:94vh;max-height:94dvh;overflow:auto}
+.modal>:last-child:not(.bar){margin-bottom:calc(16px + env(safe-area-inset-bottom,0px))}
+.modal>.bar:last-child{position:sticky;bottom:0;margin:0 -16px;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));background:var(--card);border-top:1px solid var(--bd)}
+}
 </style>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
@@ -51,13 +77,14 @@ nav button{min-width:0;padding:10px 4px;font-size:14px}
 <div class="wrap" id="app" style="display:none">
 <header><h1>PrintBros · Pedidos</h1><span class="mu" id="hoje"></span><button class="btn" id="out">Sair</button></header>
 <nav id="nav">
-<button data-t="dash" class="on">Dashboard</button>
-<button data-t="ped">Pedidos</button>
-<button data-t="cli">Clientes</button>
-<button data-t="calc">Calculadora</button>
-<button data-t="prod">Produtos</button>
+<button data-t="dash" class="on"><b class="ic">🏠</b><span>Dashboard</span></button>
+<button data-t="ped"><b class="ic">📦</b><span>Pedidos</span></button>
+<button data-t="cli"><b class="ic">👥</b><span>Clientes</span></button>
+<button data-t="calc"><b class="ic">🧮</b><span>Calculadora</span></button>
+<button data-t="prod"><b class="ic">🏷️</b><span>Produtos</span></button>
 </nav>
 <main id="main"></main>
+<button class="fab" id="fab" style="display:none" aria-label="Novo pedido">+</button>
 <p class="mu" style="margin-top:28px">Os dados ficam salvos na nuvem e sincronizam entre seus aparelhos.</p>
 <div class="bar"><button class="btn" id="exp">Exportar backup</button><button class="btn" id="imp">Importar backup</button><button class="btn" id="up">Enviar dados deste aparelho para a nuvem</button><input type="file" id="file" accept=".json" hidden></div>
 </div>
@@ -90,7 +117,7 @@ function orderCard(o){const p=db.products.find(x=>x.id===o.pid);return'<div clas
 function render(){
  $("#hoje").textContent=new Date().toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long"});
  document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("on",b.dataset.t===tab));
- const m=$("#main");if(tab==="calc"){calcView(m);return}
+ const m=$("#main");$("#fab").style.display=(tab==="dash"||tab==="ped")?"":"none";if(tab==="calc"){calcView(m);return}
  if(tab==="cli"){
   const L=clients().filter(c=>c.name.toLowerCase().includes(cq.toLowerCase()));
   m.innerHTML='<div class="bar"><input id="cs" placeholder="Buscar cliente" value="'+esc(cq)+'"></div><div class="list">'+(L.length?L.map(c=>{const ab=c.orders.filter(open).length;return'<div class="card row" data-c="'+esc(c.name)+'"><div><b>'+esc(c.name)+'</b><div class="mu">'+esc((c.city?c.city+" · ":"")+(c.phone||"sem contato"))+'</div><div class="mu">'+c.orders.length+' registro(s)'+(ab?' · '+ab+' em andamento':'')+'</div></div><div style="text-align:right"><div>'+brl(spent(c))+'</div><span class="mu">total comprado</span></div></div>'}).join(""):'<div class="card empty">Os clientes aparecem aqui conforme você cadastra pedidos.</div>')+'</div>';
@@ -117,8 +144,8 @@ function render(){
  m.querySelectorAll("[data-p]").forEach(e=>e.onclick=()=>prodForm(e.dataset.p));
  m.querySelectorAll("[data-c]").forEach(e=>e.onclick=()=>clientView(e.dataset.c));
 }
-function show(h){$("#modal").innerHTML=h;$("#ov").classList.add("on")}
-function hide(){$("#ov").classList.remove("on")}
+function show(h){$("#modal").innerHTML=h;$("#modal").scrollTop=0;$("#ov").classList.add("on");document.body.style.overflow="hidden"}
+function hide(){$("#ov").classList.remove("on");document.body.style.overflow=""}
 $("#ov").onclick=e=>{if(e.target.id==="ov")hide()};
 const val=id=>$("#"+id).value;
 
@@ -178,7 +205,7 @@ function orderForm(id,pre){
  const clients=[...new Set(db.orders.map(x=>x.client))];
  show('<h2 style="margin-top:0">'+(id?"Editar pedido":"Novo pedido")+'</h2>'+
  '<div class="f2"><label>Cliente<input id="c" list="cl" value="'+esc(o.client)+'"><datalist id="cl">'+clients.map(c=>'<option value="'+esc(c)+'">').join("")+'</datalist></label>'+
- '<label>Contato (WhatsApp)<input id="t" value="'+esc(o.phone)+'"></label></div>'+'<label>Cidade<input id="ci" value="'+esc(o.city)+'"></label>'+
+ '<label>Contato (WhatsApp)<input id="t" type="tel" value="'+esc(o.phone)+'"></label></div>'+'<label>Cidade<input id="ci" value="'+esc(o.city)+'"></label>'+
  '<label>Produto do catálogo<select id="pp"><option value="">— escolher ou digitar abaixo —</option>'+db.products.map(p=>'<option value="'+p.id+'"'+(p.id===o.pid?" selected":"")+'>'+esc(p.name)+'</option>').join("")+'</select></label>'+
  '<label>Peça<input id="i" value="'+esc(o.item)+'"></label>'+
  '<label>Especificações (material, cor, medidas, acabamento)<textarea id="s">'+esc(o.specs)+'</textarea></label>'+
@@ -218,7 +245,7 @@ function prodForm(id){
   if(id)db.products=db.products.map(x=>x.id===id?n:x);else db.products.push(n);cloudSet("products",n);
   save();hide();render()};
 }
-$("#nav").onclick=e=>{if(e.target.dataset.t){tab=e.target.dataset.t;render()}};
+$("#nav").onclick=e=>{const b=e.target.closest("button");if(b&&b.dataset.t){tab=b.dataset.t;window.scrollTo(0,0);render()}};
 $("#exp").onclick=()=>{const a=document.createElement("a");a.href="data:application/json;charset=utf-8,"+encodeURIComponent(JSON.stringify(db,null,1));a.download="printbros-backup.json";a.click()};
 $("#imp").onclick=()=>$("#file").click();
 $("#file").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const j=JSON.parse(r.result);if(j.orders&&j.products){uploadAll(j).catch(e=>alert("Erro: "+e.message))}else alert("Arquivo inválido.")}catch(x){alert("Arquivo inválido.")}};r.readAsText(f)};
@@ -249,6 +276,7 @@ auth.onAuthStateChanged(u=>{
 $("#lb").onclick=()=>{$("#lm").textContent="";auth.signInWithEmailAndPassword($("#le").value.trim(),$("#lp").value).catch(e=>{$("#lm").textContent=e.code==="auth/network-request-failed"?"Sem conexão com a internet.":"E-mail ou senha incorretos."})};
 $("#lp").onkeydown=e=>{if(e.key==="Enter")$("#lb").click()};
 $("#out").onclick=()=>auth.signOut();
+$("#fab").onclick=()=>orderForm();
 $("#up").onclick=()=>{let j=null;try{j=JSON.parse(localStorage.getItem(KEY))}catch(e){}
  const n=j?(j.orders||[]).length:0,m=j?(j.products||[]).length:0;
  if(!n&&!m){alert("Não há dados salvos neste aparelho/navegador.");return}
