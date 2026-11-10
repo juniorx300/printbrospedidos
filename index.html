@@ -111,8 +111,10 @@ function prazo(o){const d=days(o.date);if(d===null)return'<span class="mu">sem d
  if(d===0)return'<span class="soon">Hoje</span>';
  if(d<=3)return'<span class="soon">Em '+d+'d · '+fd(o.date)+'</span>';
  return'<span class="fine">Em '+d+'d · '+fd(o.date)+'</span>'}
-function pay(o){const t=(+o.value||0)*(+o.qty||1),f=Math.max(0,t-(+o.paid||0));return'<div>'+brl(t)+'</div><div class="mu">Sinal: '+brl(o.paid)+'</div>'+(o.status==="Cancelado"?'':f>0?'<div class="soon">Falta: '+brl(f)+'</div>':'<div class="fine">Pago</div>')}
-function orderCard(o){const p=db.products.find(x=>x.id===o.pid);return'<div class="card row" data-o="'+o.id+'">'+(p&&p.img?'<img class="th" src="'+p.img+'" alt="">':'')+'<div style="flex:1;min-width:0"><b>'+esc(o.client)+'</b>'+(o.city?' <span class="mu">· '+esc(o.city)+'</span>':'')+'<div>'+esc(o.qty||1)+'× '+esc(o.item)+'</div><div class="mu">'+esc(o.specs).slice(0,90)+'</div></div><div style="text-align:right;flex:none">'+pay(o)+'<div>'+prazo(o)+'</div><span class="tag">'+o.status+'</span></div></div>'}
+const itemsOf=o=>o.items&&o.items.length?o.items:[{pid:o.pid||"",name:o.item||"",specs:o.specs||"",qty:o.qty||1,value:o.value||0}];
+const totalOf=o=>itemsOf(o).reduce((a,i)=>a+(+i.value||0)*(+i.qty||1),0);
+function pay(o){const t=totalOf(o),f=Math.max(0,t-(+o.paid||0));return'<div>'+brl(t)+'</div><div class="mu">Sinal: '+brl(o.paid)+'</div>'+(o.status==="Cancelado"?'':f>0?'<div class="soon">Falta: '+brl(f)+'</div>':'<div class="fine">Pago</div>')}
+function orderCard(o){const its=itemsOf(o),p=its.map(i=>db.products.find(x=>x.id===i.pid)).find(x=>x&&x.img);return'<div class="card row" data-o="'+o.id+'">'+(p&&p.img?'<img class="th" src="'+p.img+'" alt="">':'')+'<div style="flex:1;min-width:0"><b>'+esc(o.client)+'</b>'+(o.city?' <span class="mu">· '+esc(o.city)+'</span>':'')+its.slice(0,3).map(i=>'<div>'+esc(i.qty||1)+'× '+esc(i.name)+'</div>').join("")+(its.length>3?'<div class="mu">+'+(its.length-3)+' item(ns)</div>':'')+(its.length===1&&its[0].specs?'<div class="mu">'+esc(its[0].specs).slice(0,90)+'</div>':'')+'</div><div style="text-align:right;flex:none">'+pay(o)+'<div>'+prazo(o)+'</div><span class="tag">'+o.status+'</span></div></div>'}
 
 function render(){
  $("#hoje").textContent=new Date().toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long"});
@@ -125,7 +127,7 @@ function render(){
  }else if(tab==="dash"){
   const ab=db.orders.filter(open);
   const next=ab.slice().sort((a,b)=>(a.date||"9999").localeCompare(b.date||"9999"));
-  const rec=ab.reduce((s,o)=>s+Math.max(0,(+o.value||0)*(+o.qty||1)-(+o.paid||0)),0);
+  const rec=ab.reduce((s,o)=>s+Math.max(0,totalOf(o)-(+o.paid||0)),0);
   const atr=ab.filter(o=>days(o.date)<0&&o.date).length;
   const orc=db.orders.filter(o=>o.status==="Orçamento").length;
   m.innerHTML='<div class="grid"><div class="card stat"><b>'+ab.length+'</b><span>Pedidos em andamento</span></div><div class="card stat"><b class="'+(atr?"late":"")+'">'+atr+'</b><span>Atrasados</span></div><div class="card stat"><b>'+orc+'</b><span>Orçamentos abertos</span></div><div class="card stat"><b>'+brl(rec)+'</b><span>A receber</span></div></div><h2>Próximas entregas</h2><div class="list">'+(next.length?next.slice(0,8).map(orderCard).join(""):'<div class="card empty">Nenhuma entrega pendente. Cadastre um pedido na aba Pedidos.</div>')+'</div>';
@@ -150,7 +152,7 @@ $("#ov").onclick=e=>{if(e.target.id==="ov")hide()};
 const val=id=>$("#"+id).value;
 
 function clients(){const mp={};db.orders.forEach(o=>{const k=o.client.trim().toLowerCase();const c=mp[k]||(mp[k]={name:o.client.trim(),phone:"",city:"",orders:[]});if(o.phone)c.phone=o.phone;if(o.city)c.city=o.city;c.orders.push(o)});return Object.values(mp).sort((a,b)=>a.name.localeCompare(b.name))}
-const spent=c=>c.orders.filter(o=>!["Orçamento","Cancelado"].includes(o.status)).reduce((s,o)=>s+(+o.value||0)*(+o.qty||1),0);
+const spent=c=>c.orders.filter(o=>!["Orçamento","Cancelado"].includes(o.status)).reduce((s,o)=>s+totalOf(o),0);
 function clientView(name){
  const c=clients().find(x=>x.name.toLowerCase()===name.toLowerCase());if(!c)return;
  let num=c.phone.replace(/\D/g,"");if(num.length>=10&&num.length<=11)num="55"+num;
@@ -184,9 +186,11 @@ function calcView(m){
  calc();
 }
 function msgText(o){
- const t=(+o.value||0)*(+o.qty||1),f=Math.max(0,t-(+o.paid||0)),orc=o.status==="Orçamento";
+ const t=totalOf(o),f=Math.max(0,t-(+o.paid||0)),orc=o.status==="Orçamento";
  let s="Olá, "+o.client+"! Tudo bem?\n\nSegue "+(orc?"o orçamento solicitado":"a confirmação do seu pedido")+":\n\n";
- s+="Peça: "+o.item+"\n"+(o.specs?"Especificações: "+o.specs+"\n":"")+"Quantidade: "+(o.qty||1)+"\nValor unitário: "+brl(o.value)+"\nValor total: "+brl(t)+"\n";
+ const its=itemsOf(o);
+ if(its.length===1){const i=its[0];s+="Peça: "+i.name+"\n"+(i.specs?"Especificações: "+i.specs+"\n":"")+"Quantidade: "+(i.qty||1)+"\nValor unitário: "+brl(i.value)+"\nValor total: "+brl(t)+"\n"}
+ else{s+="Itens do pedido:\n";its.forEach((i,n)=>{s+=(n+1)+") "+(i.qty||1)+"× "+i.name+(i.specs?" ("+i.specs+")":"")+" — "+brl(i.value)+" cada, subtotal "+brl((+i.value||0)*(+i.qty||1))+"\n"});s+="\nValor total: "+brl(t)+"\n"}
  if(+o.paid>0)s+="Sinal recebido: "+brl(o.paid)+"\nSaldo a pagar: "+brl(f)+"\n";
  if(o.date)s+="Previsão de entrega: "+fd(o.date)+"\n";
  s+="\n"+(orc?"Fico no aguardo da sua confirmação para iniciarmos a produção.":"Qualquer dúvida, estou à disposição.")+"\n\nAtenciosamente,\n"+(db.biz||"");
@@ -201,28 +205,34 @@ function msgForm(id){
  $("#cx").onclick=()=>orderForm(id);
 }
 function orderForm(id,pre){
- const o=db.orders.find(x=>x.id===id)||{...pre,status:"Orçamento",qty:1,created:new Date().toISOString().slice(0,10)};
+ const o=db.orders.find(x=>x.id===id)||{status:"Orçamento",created:new Date().toISOString().slice(0,10),...pre};
  const clients=[...new Set(db.orders.map(x=>x.client))];
+ let its=itemsOf(o).map(i=>({...i}));
+ const prodOpts=sel=>'<option value="">— produto do catálogo —</option>'+db.products.map(p=>'<option value="'+p.id+'"'+(p.id===sel?" selected":"")+'>'+esc(p.name)+'</option>').join("");
+ const itHtml=()=>its.map((i,n)=>'<div class="card" style="margin-bottom:10px" data-i="'+n+'"><div class="row" style="cursor:default;align-items:center;margin-bottom:8px"><b>Produto '+(n+1)+'</b>'+(its.length>1?'<button type="button" class="btn d" data-rm="'+n+'">Remover</button>':'')+'</div><label>Do catálogo<select data-f="pid">'+prodOpts(i.pid)+'</select></label><label>Peça<input data-f="name" value="'+esc(i.name)+'"></label><label>Especificações (material, cor, tamanho)<textarea data-f="specs">'+esc(i.specs)+'</textarea></label><div class="f2"><label>Quantidade<input data-f="qty" type="number" min="1" value="'+esc(i.qty||1)+'"></label><label>Valor unitário (R$)<input data-f="value" type="number" step="0.01" value="'+esc(i.value??"")+'"></label></div></div>').join("");
+ const sync=()=>{document.querySelectorAll("#its [data-i]").forEach(b=>{const i=its[+b.dataset.i];b.querySelectorAll("[data-f]").forEach(f=>{i[f.dataset.f]=f.value})})};
  show('<h2 style="margin-top:0">'+(id?"Editar pedido":"Novo pedido")+'</h2>'+
  '<div class="f2"><label>Cliente<input id="c" list="cl" value="'+esc(o.client)+'"><datalist id="cl">'+clients.map(c=>'<option value="'+esc(c)+'">').join("")+'</datalist></label>'+
  '<label>Contato (WhatsApp)<input id="t" type="tel" value="'+esc(o.phone)+'"></label></div>'+'<label>Cidade<input id="ci" value="'+esc(o.city)+'"></label>'+
- '<label>Produto do catálogo<select id="pp"><option value="">— escolher ou digitar abaixo —</option>'+db.products.map(p=>'<option value="'+p.id+'"'+(p.id===o.pid?" selected":"")+'>'+esc(p.name)+'</option>').join("")+'</select></label>'+
- '<label>Peça<input id="i" value="'+esc(o.item)+'"></label>'+
- '<label>Especificações (material, cor, medidas, acabamento)<textarea id="s">'+esc(o.specs)+'</textarea></label>'+
- '<div class="f2"><label>Quantidade<input id="q" type="number" min="1" value="'+(o.qty||1)+'"></label><label>Valor unitário (R$)<input id="v" type="number" step="0.01" value="'+(o.value??"")+'"></label>'+
+'<div id="its">'+itHtml()+'</div><button type="button" class="btn" id="addit" style="margin-bottom:12px">+ Adicionar outro produto</button>'+
+'<div class="f2">'+
  '<label>Sinal já pago (R$)<input id="pg" type="number" step="0.01" value="'+(o.paid??"")+'"></label><label>Entrega prevista<input id="d" type="date" value="'+esc(o.date)+'"></label></div>'+
  '<label>Status<select id="st">'+ST.map(s=>'<option'+(s===o.status?" selected":"")+'>'+s+'</option>').join("")+'</select></label>'+
  '<label>Observações<textarea id="n">'+esc(o.notes)+'</textarea></label>'+
  '<div class="mu" id="tot"></div><div class="bar" style="margin-top:12px"><button class="btn p" id="ok">Salvar</button><button class="btn" id="cx">Cancelar</button>'+(id?'<button class="btn" id="msg">Mensagem p/ cliente</button>':'')+(id?'<button class="btn d" id="del">Excluir</button>':'')+'</div>');
- const tot=()=>$("#tot").textContent="Total: "+brl(val("v")*val("q"))+" · Falta receber: "+brl(Math.max(0,val("v")*val("q")-val("pg")));
- ["v","q","pg"].forEach(k=>$("#"+k).oninput=tot);tot();
- $("#pp").onchange=e=>{const p=db.products.find(x=>x.id===e.target.value);if(p){$("#i").value=p.name;$("#v").value=p.price;if(!val("s"))$("#s").value=[p.material,p.desc].filter(Boolean).join(" · ");tot()}};
+const tot=()=>{const t=its.reduce((a,i)=>a+(+i.value||0)*(+i.qty||1),0);$("#tot").textContent="Total: "+brl(t)+" · Falta receber: "+brl(Math.max(0,t-val("pg")))};
+$("#pg").oninput=tot;tot();
+ $("#its").oninput=()=>{sync();tot()};
+ $("#its").onchange=e=>{if(e.target.dataset.f==="pid"){sync();const i=its[+e.target.closest("[data-i]").dataset.i],p=db.products.find(x=>x.id===i.pid);if(p){i.name=p.name;i.value=p.price;if(!i.specs)i.specs=[p.material,p.desc].filter(Boolean).join(" · ");$("#its").innerHTML=itHtml()}tot()}};
+ $("#its").onclick=e=>{const r=e.target.dataset.rm;if(r!==undefined){sync();its.splice(+r,1);$("#its").innerHTML=itHtml();tot()}};
+ $("#addit").onclick=()=>{sync();its.push({pid:"",name:"",specs:"",qty:1,value:""});$("#its").innerHTML=itHtml();tot()};
  $("#cx").onclick=hide;
  if(id)$("#msg").onclick=()=>msgForm(id);
  if(id)$("#del").onclick=()=>{if(confirm("Excluir este pedido?")){db.orders=db.orders.filter(x=>x.id!==id);cloudDel("orders",id);save();hide();render()}};
  $("#ok").onclick=()=>{
-  if(!val("c").trim()||!val("i").trim()){alert("Informe o cliente e a peça.");return}
-  const n={id:id||uid(),client:val("c").trim(),phone:val("t"),city:val("ci").trim(),pid:val("pp"),item:val("i").trim(),specs:val("s"),qty:+val("q")||1,value:+val("v")||0,paid:+val("pg")||0,date:val("d"),status:val("st"),notes:val("n"),created:o.created};
+  sync();const vi=its.filter(i=>String(i.name).trim());
+  if(!val("c").trim()||!vi.length){alert("Informe o cliente e ao menos uma peça.");return}
+  const n={id:id||uid(),client:val("c").trim(),phone:val("t"),city:val("ci").trim(),items:vi.map(i=>({pid:i.pid||"",name:String(i.name).trim(),specs:i.specs||"",qty:+i.qty||1,value:+i.value||0})),paid:+val("pg")||0,date:val("d"),status:val("st"),notes:val("n"),created:o.created};
   if(id)db.orders=db.orders.map(x=>x.id===id?n:x);else db.orders.push(n);cloudSet("orders",n);
   save();hide();render()};
 }
