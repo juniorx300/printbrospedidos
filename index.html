@@ -42,10 +42,13 @@ label{display:block;font-size:13px;color:var(--mu);margin-bottom:10px}
 .pimg{max-width:100%;max-height:160px;border-radius:8px;margin-bottom:8px}
 @media(max-width:480px){.f2{grid-template-columns:1fr}}
 </style>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 </head>
 <body>
-<div class="wrap">
-<header><h1>PrintBros · Pedidos</h1><span class="mu" id="hoje"></span></header>
+<div class="wrap" id="app" style="display:none">
+<header><h1>PrintBros · Pedidos</h1><span class="mu" id="hoje"></span><button class="btn" id="out">Sair</button></header>
 <nav id="nav">
 <button data-t="dash" class="on">Dashboard</button>
 <button data-t="ped">Pedidos</button>
@@ -53,9 +56,10 @@ label{display:block;font-size:13px;color:var(--mu);margin-bottom:10px}
 <button data-t="prod">Produtos</button>
 </nav>
 <main id="main"></main>
-<p class="mu" style="margin-top:28px">Os dados ficam salvos neste navegador. Use o backup para não perder nada.</p>
-<div class="bar"><button class="btn" id="exp">Exportar backup</button><button class="btn" id="imp">Importar backup</button><input type="file" id="file" accept=".json" hidden></div>
+<p class="mu" style="margin-top:28px">Os dados ficam salvos na nuvem e sincronizam entre seus aparelhos.</p>
+<div class="bar"><button class="btn" id="exp">Exportar backup</button><button class="btn" id="imp">Importar backup</button><button class="btn" id="up">Enviar dados deste aparelho para a nuvem</button><input type="file" id="file" accept=".json" hidden></div>
 </div>
+<div id="login" style="position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50"><div class="modal"><h2 style="margin-top:0">PrintBros · Entrar</h2><label>E-mail<input id="le" type="email" autocomplete="username"></label><label>Senha<input id="lp" type="password" autocomplete="current-password"></label><div class="bar"><button class="btn p" id="lb">Entrar</button></div><div class="late" id="lm"></div></div></div>
 <div class="ov" id="ov"><div class="modal" id="modal"></div></div>
 
 <script>
@@ -63,7 +67,7 @@ const ST=["Orçamento","Aprovado","Em produção","Pronto","Entregue","Cancelado
 const KEY="printbros.v1";
 let db={orders:[],products:[]},tab="dash",flt="abertos",mem=null,cq="";
 function load(){try{const r=localStorage.getItem(KEY);if(r)db=JSON.parse(r)}catch(e){if(mem)db=mem}}
-function save(){mem=db;try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){alert("Não foi possível salvar neste navegador (espaço cheio ou bloqueado). Exporte um backup.")}}
+function save(){}
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const brl=n=>(Number(n)||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
@@ -140,7 +144,7 @@ function msgForm(id){
  const o=db.orders.find(x=>x.id===id);if(!o)return;
  show('<h2 style="margin-top:0">Mensagem para '+esc(o.client)+'</h2><label>Nome da sua empresa (assinatura)<input id="bz" value="'+esc(db.biz)+'"></label><label>Mensagem (você pode editar antes de enviar)<textarea id="mt" style="min-height:260px"></textarea></label><div class="bar"><button class="btn p" id="cp">Copiar mensagem</button><button class="btn" id="wa">Abrir no WhatsApp</button><button class="btn" id="cx">Voltar</button></div><div class="mu" id="mm"></div>');
  $("#mt").value=msgText(o);
- $("#bz").oninput=e=>{db.biz=e.target.value;save();$("#mt").value=msgText(o)};
+ $("#bz").oninput=e=>{db.biz=e.target.value;cloudBiz();$("#mt").value=msgText(o)};
  $("#cp").onclick=()=>{const t=$("#mt"),ok=()=>$("#mm").textContent="Mensagem copiada!";(navigator.clipboard?navigator.clipboard.writeText(t.value).then(ok):Promise.reject()).catch(()=>{t.select();document.execCommand("copy");ok()})};
  $("#wa").onclick=()=>{let num=(o.phone||"").replace(/\D/g,"");if(num.length>=10&&num.length<=11)num="55"+num;window.open("https://wa.me/"+num+"?text="+encodeURIComponent($("#mt").value),"_blank")};
  $("#cx").onclick=()=>orderForm(id);
@@ -164,11 +168,11 @@ function orderForm(id,pre){
  $("#pp").onchange=e=>{const p=db.products.find(x=>x.id===e.target.value);if(p){$("#i").value=p.name;$("#v").value=p.price;if(!val("s"))$("#s").value=[p.material,p.desc].filter(Boolean).join(" · ");tot()}};
  $("#cx").onclick=hide;
  if(id)$("#msg").onclick=()=>msgForm(id);
- if(id)$("#del").onclick=()=>{if(confirm("Excluir este pedido?")){db.orders=db.orders.filter(x=>x.id!==id);save();hide();render()}};
+ if(id)$("#del").onclick=()=>{if(confirm("Excluir este pedido?")){db.orders=db.orders.filter(x=>x.id!==id);cloudDel("orders",id);save();hide();render()}};
  $("#ok").onclick=()=>{
   if(!val("c").trim()||!val("i").trim()){alert("Informe o cliente e a peça.");return}
   const n={id:id||uid(),client:val("c").trim(),phone:val("t"),city:val("ci").trim(),pid:val("pp"),item:val("i").trim(),specs:val("s"),qty:+val("q")||1,value:+val("v")||0,paid:+val("pg")||0,date:val("d"),status:val("st"),notes:val("n"),created:o.created};
-  if(id)db.orders=db.orders.map(x=>x.id===id?n:x);else db.orders.push(n);
+  if(id)db.orders=db.orders.map(x=>x.id===id?n:x);else db.orders.push(n);cloudSet("orders",n);
   save();hide();render()};
 }
 function prodForm(id){
@@ -183,18 +187,49 @@ function prodForm(id){
  let img=p.img||"";
  $("#pv").onclick=e=>{if(e.target.id==="rm"){img="";$("#pv").innerHTML=""}};
  $("#pf").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{const k=Math.min(1,480/Math.max(im.width,im.height)),cv=document.createElement("canvas");cv.width=Math.round(im.width*k);cv.height=Math.round(im.height*k);cv.getContext("2d").drawImage(im,0,0,cv.width,cv.height);img=cv.toDataURL("image/jpeg",.75);$("#pv").innerHTML='<img class="pimg" src="'+img+'" alt=""><br><button class="btn" id="rm" type="button">Remover foto</button>'};im.src=r.result};r.readAsDataURL(f)};
- if(id)$("#del").onclick=()=>{if(confirm("Excluir este produto?")){db.products=db.products.filter(x=>x.id!==id);save();hide();render()}};
+ if(id)$("#del").onclick=()=>{if(confirm("Excluir este produto?")){db.products=db.products.filter(x=>x.id!==id);cloudDel("products",id);save();hide();render()}};
  $("#ok").onclick=()=>{
   if(!val("pn").trim()){alert("Informe o nome.");return}
   const n={id:id||uid(),name:val("pn").trim(),material:val("pm"),price:+val("pr")||0,time:val("pt"),desc:val("pd"),img};
-  if(id)db.products=db.products.map(x=>x.id===id?n:x);else db.products.push(n);
+  if(id)db.products=db.products.map(x=>x.id===id?n:x);else db.products.push(n);cloudSet("products",n);
   save();hide();render()};
 }
 $("#nav").onclick=e=>{if(e.target.dataset.t){tab=e.target.dataset.t;render()}};
 $("#exp").onclick=()=>{const a=document.createElement("a");a.href="data:application/json;charset=utf-8,"+encodeURIComponent(JSON.stringify(db,null,1));a.download="printbros-backup.json";a.click()};
 $("#imp").onclick=()=>$("#file").click();
-$("#file").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const j=JSON.parse(r.result);if(j.orders&&j.products){db=j;save();render()}else alert("Arquivo inválido.")}catch(x){alert("Arquivo inválido.")}};r.readAsText(f)};
-load();render();
+$("#file").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const j=JSON.parse(r.result);if(j.orders&&j.products){uploadAll(j).catch(e=>alert("Erro: "+e.message))}else alert("Arquivo inválido.")}catch(x){alert("Arquivo inválido.")}};r.readAsText(f)};
+
+firebase.initializeApp({apiKey:"AIzaSyAmfM2X6LIQBzSfnWSr_mdnNPISSE1dbeI",authDomain:"printbros3d-b4f90.firebaseapp.com",projectId:"printbros3d-b4f90",storageBucket:"printbros3d-b4f90.firebasestorage.app",messagingSenderId:"686242643911",appId:"1:686242643911:web:b98445a843418d30fb63e2"});
+const auth=firebase.auth(),fs=firebase.firestore();
+fs.enablePersistence({synchronizeTabs:true}).catch(()=>{});
+let me=null,unsubs=[];
+const base=()=>fs.collection("users").doc(me);
+const clean=o=>JSON.parse(JSON.stringify(o));
+function cloudSet(c,o){if(me)base().collection(c).doc(o.id).set(clean(o)).catch(e=>alert("Não foi possível salvar na nuvem: "+e.message))}
+function cloudDel(c,id){if(me)base().collection(c).doc(id).delete().catch(e=>alert("Não foi possível excluir: "+e.message))}
+function cloudBiz(){if(me)base().collection("meta").doc("settings").set({biz:db.biz||""}).catch(()=>{})}
+async function uploadAll(j){
+ const it=[...(j.orders||[]).map(o=>["orders",o]),...(j.products||[]).map(p=>["products",p])].filter(x=>x[1]&&x[1].id);
+ for(let i=0;i<it.length;i+=25){const b=fs.batch();it.slice(i,i+25).forEach(([c,o])=>b.set(base().collection(c).doc(o.id),clean(o)));await b.commit()}
+ if(j.biz){db.biz=j.biz;cloudBiz()}
+ alert("Pronto! "+it.length+" registro(s) enviados para a nuvem.")}
+auth.onAuthStateChanged(u=>{
+ unsubs.forEach(f=>f());unsubs=[];
+ if(!u){me=null;db={orders:[],products:[],biz:""};$("#login").style.display="flex";$("#app").style.display="none";return}
+ me=u.uid;$("#login").style.display="none";$("#app").style.display="";
+ const er=e=>alert("Erro ao carregar da nuvem: "+e.message);
+ unsubs.push(base().collection("orders").onSnapshot(s=>{db.orders=s.docs.map(d=>d.data());render()},er));
+ unsubs.push(base().collection("products").onSnapshot(s=>{db.products=s.docs.map(d=>d.data());render()},er));
+ unsubs.push(base().collection("meta").doc("settings").onSnapshot(s=>{db.biz=(s.data()||{}).biz||""},er));
+});
+$("#lb").onclick=()=>{$("#lm").textContent="";auth.signInWithEmailAndPassword($("#le").value.trim(),$("#lp").value).catch(e=>{$("#lm").textContent=e.code==="auth/network-request-failed"?"Sem conexão com a internet.":"E-mail ou senha incorretos."})};
+$("#lp").onkeydown=e=>{if(e.key==="Enter")$("#lb").click()};
+$("#out").onclick=()=>auth.signOut();
+$("#up").onclick=()=>{let j=null;try{j=JSON.parse(localStorage.getItem(KEY))}catch(e){}
+ const n=j?(j.orders||[]).length:0,m=j?(j.products||[]).length:0;
+ if(!n&&!m){alert("Não há dados salvos neste aparelho/navegador.");return}
+ if(confirm("Enviar "+n+" pedido(s) e "+m+" produto(s) deste aparelho para a nuvem?"))uploadAll(j).catch(e=>alert("Erro: "+e.message))};
+render();
 </script>
 </body>
 </html>
