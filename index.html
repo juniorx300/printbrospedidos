@@ -94,7 +94,7 @@ input,select,textarea{font-size:16px}
 <script>
 const ST=["Orçamento","Aprovado","Em produção","Pronto","Entregue","Cancelado"];
 const KEY="printbros.v1";
-let db={orders:[],products:[]},tab="dash",flt="abertos",mem=null,cq="";
+let db={orders:[],products:[]},tab="dash",flt="abertos",mem=null,cq="",oq="";
 function load(){try{const r=localStorage.getItem(KEY);if(r)db=JSON.parse(r)}catch(e){if(mem)db=mem}}
 function save(){}
 const $=s=>document.querySelector(s);
@@ -113,6 +113,7 @@ function prazo(o){const d=days(o.date);if(d===null)return'<span class="mu">sem d
  return'<span class="fine">Em '+d+'d · '+fd(o.date)+'</span>'}
 const itemsOf=o=>o.items&&o.items.length?o.items:[{pid:o.pid||"",name:o.item||"",specs:o.specs||"",qty:o.qty||1,value:o.value||0}];
 const totalOf=o=>itemsOf(o).reduce((a,i)=>a+(+i.value||0)*(+i.qty||1),0);
+const sortedProducts=()=>db.products.slice().sort((a,b)=>String(a.name).localeCompare(String(b.name),"pt-BR",{sensitivity:"base"}));
 function pay(o){const t=totalOf(o),f=Math.max(0,t-(+o.paid||0));return'<div>'+brl(t)+'</div><div class="mu">Sinal: '+brl(o.paid)+'</div>'+(o.status==="Cancelado"?'':f>0?'<div class="soon">Falta: '+brl(f)+'</div>':'<div class="fine">Pago</div>')}
 function orderCard(o){const its=itemsOf(o),p=its.map(i=>db.products.find(x=>x.id===i.pid)).find(x=>x&&x.img);return'<div class="card row" data-o="'+o.id+'">'+(p&&p.img?'<img class="th" src="'+p.img+'" alt="">':'')+'<div style="flex:1;min-width:0"><b>'+esc(o.client)+'</b>'+(o.city?' <span class="mu">· '+esc(o.city)+'</span>':'')+its.slice(0,3).map(i=>'<div>'+esc(i.qty||1)+'× '+esc(i.name)+'</div>').join("")+(its.length>3?'<div class="mu">+'+(its.length-3)+' item(ns)</div>':'')+(its.length===1&&its[0].specs?'<div class="mu">'+esc(its[0].specs).slice(0,90)+'</div>':'')+'</div><div style="text-align:right;flex:none">'+pay(o)+'<div>'+prazo(o)+'</div><span class="tag">'+o.status+'</span></div></div>'}
 
@@ -132,14 +133,24 @@ function render(){
   const orc=db.orders.filter(o=>o.status==="Orçamento").length;
   m.innerHTML='<div class="grid"><div class="card stat"><b>'+ab.length+'</b><span>Pedidos em andamento</span></div><div class="card stat"><b class="'+(atr?"late":"")+'">'+atr+'</b><span>Atrasados</span></div><div class="card stat"><b>'+orc+'</b><span>Orçamentos abertos</span></div><div class="card stat"><b>'+brl(rec)+'</b><span>A receber</span></div></div><h2>Próximas entregas</h2><div class="list">'+(next.length?next.slice(0,8).map(orderCard).join(""):'<div class="card empty">Nenhuma entrega pendente. Cadastre um pedido na aba Pedidos.</div>')+'</div>';
  }else if(tab==="ped"){
-  let l=db.orders.slice();
-  if(flt==="abertos")l=l.filter(o=>!["Entregue","Cancelado"].includes(o.status));
-  else if(flt!=="todos")l=l.filter(o=>o.status===flt);
-  l.sort((a,b)=>(a.date||"9999").localeCompare(b.date||"9999"));
-  m.innerHTML='<div class="bar"><button class="btn p" id="novo">+ Novo pedido</button><select id="flt" style="width:auto"><option value="abertos">Em aberto</option><option value="todos">Todos</option>'+ST.map(s=>'<option>'+s+'</option>').join("")+'</select></div><div class="list">'+(l.length?l.map(orderCard).join(""):'<div class="card empty">Nada por aqui.</div>')+'</div>';
-  $("#flt").value=flt;$("#flt").onchange=e=>{flt=e.target.value;render()};$("#novo").onclick=()=>orderForm();
+  const nz=s=>String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+  const fin=o=>["Entregue","Cancelado"].includes(o.status);
+  const lst=()=>{
+   const q=nz(oq.trim());
+   let l=db.orders.slice();
+   if(q)l=l.filter(o=>nz([o.client,o.city,itemsOf(o).map(i=>i.name).join(" ")].join(" ")).includes(q));
+   else if(flt==="abertos")l=l.filter(o=>!fin(o));
+   else if(flt!=="todos")l=l.filter(o=>o.status===flt);
+   l.sort((a,b)=>fin(a)-fin(b)||(fin(a)?(b.date||"").localeCompare(a.date||""):(a.date||"9999").localeCompare(b.date||"9999")));
+   $("#cnt").textContent="Mostrando "+l.length+" de "+db.orders.length+" pedido(s)"+(q?" · busca em todos os status":"");
+   $("#olist").innerHTML=l.length?l.map(orderCard).join(""):'<div class="card empty">Nenhum pedido encontrado.</div>';
+   $("#olist").querySelectorAll("[data-o]").forEach(e=>e.onclick=()=>orderForm(e.dataset.o));
+  };
+  m.innerHTML='<div class="bar"><input id="oq" type="search" placeholder="🔍 Buscar por cliente, cidade ou peça" value="'+esc(oq)+'" style="flex:1 1 220px"></div><div class="bar"><button class="btn p" id="novo">+ Novo pedido</button><select id="flt" style="width:auto"><option value="abertos">Em aberto</option><option value="todos">Todos</option>'+ST.map(s=>'<option>'+s+'</option>').join("")+'</select></div><div class="mu" id="cnt" style="margin-bottom:8px"></div><div class="list" id="olist"></div>';
+  $("#flt").value=flt;$("#flt").onchange=e=>{flt=e.target.value;lst()};$("#novo").onclick=()=>orderForm();$("#oq").oninput=e=>{oq=e.target.value;lst()};
+  lst();
  }else{
-  m.innerHTML='<div class="bar"><button class="btn p" id="novo">+ Novo produto</button></div><div class="list">'+(db.products.length?db.products.map(p=>'<div class="card row" data-p="'+p.id+'">'+(p.img?'<img class="th" src="'+p.img+'" alt="">':'')+'<div style="flex:1"><b>'+esc(p.name)+'</b><div class="mu">'+esc(p.material)+(p.time?' · '+esc(p.time):'')+'</div><div class="mu">'+esc(p.desc).slice(0,100)+'</div></div><div>'+brl(p.price)+'</div></div>').join(""):'<div class="card empty">Cadastre seus produtos para preencher pedidos mais rápido.</div>')+'</div>';
+  m.innerHTML='<div class="bar"><button class="btn p" id="novo">+ Novo produto</button></div><div class="list">'+(db.products.length?sortedProducts().map(p=>'<div class="card row" data-p="'+p.id+'">'+(p.img?'<img class="th" src="'+p.img+'" alt="">':'')+'<div style="flex:1"><b>'+esc(p.name)+'</b><div class="mu">'+esc(p.material)+(p.time?' · '+esc(p.time):'')+'</div><div class="mu">'+esc(p.desc).slice(0,100)+'</div></div><div>'+brl(p.price)+'</div></div>').join(""):'<div class="card empty">Cadastre seus produtos para preencher pedidos mais rápido.</div>')+'</div>';
   $("#novo").onclick=()=>prodForm();
  }
  m.querySelectorAll("[data-o]").forEach(e=>e.onclick=()=>orderForm(e.dataset.o));
@@ -208,7 +219,7 @@ function orderForm(id,pre){
  const o=db.orders.find(x=>x.id===id)||{status:"Orçamento",created:new Date().toISOString().slice(0,10),...pre};
  const clients=[...new Set(db.orders.map(x=>x.client))];
  let its=itemsOf(o).map(i=>({...i}));
- const prodOpts=sel=>'<option value="">— produto do catálogo —</option>'+db.products.map(p=>'<option value="'+p.id+'"'+(p.id===sel?" selected":"")+'>'+esc(p.name)+'</option>').join("");
+ const prodOpts=sel=>'<option value="">— produto do catálogo —</option>'+sortedProducts().map(p=>'<option value="'+p.id+'"'+(p.id===sel?" selected":"")+'>'+esc(p.name)+'</option>').join("");
  const itHtml=()=>its.map((i,n)=>'<div class="card" style="margin-bottom:10px" data-i="'+n+'"><div class="row" style="cursor:default;align-items:center;margin-bottom:8px"><b>Produto '+(n+1)+'</b>'+(its.length>1?'<button type="button" class="btn d" data-rm="'+n+'">Remover</button>':'')+'</div><label>Do catálogo<select data-f="pid">'+prodOpts(i.pid)+'</select></label><label>Peça<input data-f="name" value="'+esc(i.name)+'"></label><label>Especificações (material, cor, tamanho)<textarea data-f="specs">'+esc(i.specs)+'</textarea></label><div class="f2"><label>Quantidade<input data-f="qty" type="number" min="1" value="'+esc(i.qty||1)+'"></label><label>Valor unitário (R$)<input data-f="value" type="number" step="0.01" value="'+esc(i.value??"")+'"></label></div></div>').join("");
  const sync=()=>{document.querySelectorAll("#its [data-i]").forEach(b=>{const i=its[+b.dataset.i];b.querySelectorAll("[data-f]").forEach(f=>{i[f.dataset.f]=f.value})})};
  show('<h2 style="margin-top:0">'+(id?"Editar pedido":"Novo pedido")+'</h2>'+
